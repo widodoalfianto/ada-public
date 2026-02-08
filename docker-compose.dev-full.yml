@@ -1,0 +1,211 @@
+version: '3.8'
+
+services:
+  db:
+    image: timescale/timescaledb:latest-pg15
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: stock_dev_db
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT}:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U user -d stock_dev_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    env_file:
+      - .env.dev
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "${REDIS_PORT}:6379"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    env_file:
+      - .env.dev
+
+  data-service:
+    image: ada/data-service:dev
+    build:
+      context: .
+      dockerfile: services/data-service/Dockerfile
+    ports:
+      - "${DATA_PORT}:8000"
+    volumes:
+      - ./services/data-service:/app
+      - ./services/shared:/libs/shared
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/stock_dev_db
+      REDIS_URL: redis://redis:6379/0
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY}
+      LOG_LEVEL: "DEBUG"
+      TEST_MODE: ${TEST_MODE}
+      PYTHONPATH: "/app:/libs"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    env_file:
+      - .env.dev
+
+  indicator-service:
+    image: ada/indicator-service:dev
+    build:
+      context: .
+      dockerfile: services/indicator-service/Dockerfile
+    ports:
+      - "${INDICATOR_PORT}:8000"
+    volumes:
+      - ./services/indicator-service:/app
+      - ./services/shared:/libs/shared
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/stock_dev_db
+      LOG_LEVEL: "DEBUG"
+      TEST_MODE: ${TEST_MODE}
+      PYTHONPATH: "/app:/libs"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    env_file:
+      - .env.dev
+
+  scanner-service:
+    image: ada/scanner-service:dev
+    build:
+      context: .
+      dockerfile: services/scanner-service/Dockerfile
+    ports:
+      - "${SCANNER_PORT}:8000"
+    volumes:
+      - ./services/scanner-service:/app
+      - ./services/shared:/libs/shared
+    depends_on:
+      db:
+        condition: service_healthy
+      indicator-service:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/stock_dev_db
+      LOG_LEVEL: "DEBUG"
+      TEST_MODE: ${TEST_MODE}
+      PYTHONPATH: "/app:/libs"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    env_file:
+      - .env.dev
+
+  alert-service:
+    image: ada/alert-service:dev
+    build:
+      context: .
+      dockerfile: services/alert-service/Dockerfile
+    ports:
+      - "${ALERT_PORT}:8000"
+    volumes:
+      - ./services/alert-service:/app
+      - ./services/shared:/libs/shared
+    depends_on:
+      redis:
+        condition: service_started
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/stock_dev_db
+      REDIS_URL: redis://redis:6379/0
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+
+      # Mode
+      TEST_MODE: "True"
+      LOG_LEVEL: "DEBUG"
+
+      # Guild ID for instant sync
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    env_file:
+      - .env.dev
+
+  scheduler-service:
+    image: ada/scheduler-service:dev
+    build:
+      context: .
+      dockerfile: services/scheduler-service/Dockerfile
+    volumes:
+      - ./services/scheduler-service:/app
+      - ./services/shared:/libs/shared
+    environment:
+      SCANNER_SERVICE_URL: http://scanner-service:8000
+      TZ: America/New_York
+      TEST_MODE: ${TEST_MODE}
+      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/stock_dev_db
+    depends_on:
+      scanner-service:
+        condition: service_started
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    env_file:
+      - .env.dev
+
+  backtest-service:
+    image: ada/backtest-service:dev
+    build:
+      context: .
+      dockerfile: services/backtest-service/Dockerfile
+    ports:
+      - "${BACKTEST_PORT}:8000"
+    volumes:
+      - ./services/backtest-service:/app
+      - ./:/ada:ro
+      - ./services/shared:/libs/shared
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://user:password@db:5432/stock_dev_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: stock_dev_db
+      LOG_LEVEL: "DEBUG"
+      TEST_MODE: ${TEST_MODE}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    env_file:
+      - .env.dev
+
+volumes:
+  postgres_data_dev:

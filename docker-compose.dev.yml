@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  alert-service:
+    environment:
+      TEST_MODE: "True"
+      LOG_LEVEL: "DEBUG"
+
+  scanner-service:
+    environment:
+      LOG_LEVEL: "DEBUG"
+
+  data-service:
+    environment:
+      LOG_LEVEL: "DEBUG"
+
+  indicator-service:
+    environment:
+      LOG_LEVEL: "DEBUG"
+
+  backtest-service:
+    environment:
+      LOG_LEVEL: "DEBUG"

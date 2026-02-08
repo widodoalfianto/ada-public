@@ -1,0 +1,14 @@
+apscheduler==3.10.4
+requests==2.31.0
+pytz==2023.3.post1
+pandas_market_calendars==4.3.3
+pandas==1.5.3
+numpy<2.0.0
+tenacity==8.2.3
+httpx==0.24.1
+sqlalchemy==2.0.19
+psycopg2-binary==2.9.9
+asyncpg==0.28.0
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pydantic-settings>=2.2.0

@@ -1,0 +1,180 @@
+version: '3.8'
+
+services:
+  db:
+    image: timescale/timescaledb:latest-pg15
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: stock_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U user -d stock_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  data-service:
+    image: ada/data-service:prod
+    build:
+      context: .
+      dockerfile: services/data-service/Dockerfile
+    ports:
+      - "8001:8000"
+
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/stock_db
+      REDIS_URL: redis://redis:6379/0
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  indicator-service:
+    image: ada/indicator-service:prod
+    build:
+      context: .
+      dockerfile: services/indicator-service/Dockerfile
+    ports:
+      - "8002:8000"
+
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/stock_db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  scanner-service:
+    image: ada/scanner-service:prod
+    build:
+      context: .
+      dockerfile: services/scanner-service/Dockerfile
+    ports:
+      - "8003:8000"
+
+    depends_on:
+      db:
+        condition: service_healthy
+      indicator-service:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/stock_db
+      INDICATOR_SERVICE_URL: http://indicator-service:8000
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  alert-service:
+    image: ada/alert-service:prod
+    build:
+      context: .
+      dockerfile: services/alert-service/Dockerfile
+    ports:
+      - "8004:8000"
+
+    depends_on:
+      redis:
+        condition: service_started
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/stock_db
+      REDIS_URL: redis://redis:6379/0
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+
+      # Mode
+      TEST_MODE: "False"
+
+      # Prod Channels (Fallback/Base)
+      DISCORD_CHANNEL_FALLBACK: ${DISCORD_CHANNEL_FALLBACK}
+      DISCORD_CHANNEL_MA: ${DISCORD_CHANNEL_MA}
+      DISCORD_CHANNEL_RSI: ${DISCORD_CHANNEL_RSI}
+      DISCORD_CHANNEL_MACD: ${DISCORD_CHANNEL_MACD}
+      DISCORD_CHANNEL_VOL: ${DISCORD_CHANNEL_VOL}
+
+      # Test Channels
+
+
+      # System
+      DISCORD_CHANNEL_SYSTEM: ${DISCORD_CHANNEL_SYSTEM}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  scheduler-service:
+    image: ada/scheduler-service:prod
+    build:
+      context: .
+      dockerfile: services/scheduler-service/Dockerfile
+
+    environment:
+      SCANNER_SERVICE_URL: http://scanner-service:8000
+      TZ: America/New_York
+      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/stock_db
+    depends_on:
+      scanner-service:
+        condition: service_started
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backtest-service:
+    image: ada/backtest-service:prod
+    build:
+      context: .
+      dockerfile: services/backtest-service/Dockerfile
+    ports:
+      - "8005:8000"
+
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://user:password@db:5432/stock_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: stock_db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
