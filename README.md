@@ -5,17 +5,15 @@ Ada is a powerful, microservices-based platform designed to scan the **S&P 500**
 ## 🚀 Key Features
 
 - **Liquidity-Weighted Focus**: Scans the **top 100** S&P 500 stocks by average dollar volume (Avg Volume × Avg Price).
-- **Advanced Technical Analysis**:
-  - **Moving Averages**: EMA 9 / SMA 20.
-  - **Crossovers**: Golden Cross (Bullish) & Death Cross (Bearish).
+- **Advanced Technical Analysis**
 - **Rich Alerts**:
-  - **Semantic Meaning**: Explains *why* the alert was triggered.
-  - **Actionable Advice**: Suggests potential moves (e.g., "🐂 Bullish - Potential Entry").
-  - **Categorized Routing**: Alerts can be routed to Discord channels (MA, system, fallback).
+  - **Semantic Meaning**
+  - **Categorized Routing**
 - **Architecture**:
   - **Dockerized**: Fully containerized for easy deployment.
   - **TimescaleDB**: High-performance time-series data handling.
   - **Redis**: Fast message queuing between services.
+  - **Microservices**: Loosely coupled services
 
 ## 🏗️ Architecture
 
@@ -30,7 +28,7 @@ The system consists of 4 decoupled microservices:
     - Optimized with Pandas/NumPy for speed.
 3.  **Scanner Service**:
     - The "Brain". Orchestrates scans.
-    - Evaluates complex conditions (e.g., "SMA 50 crossed SMA 200 today").
+    - Evaluates complex conditions.
 4.  **Alert Service**:
     - Formats and delivers alerts to Discord.
     - Routing logic based on alert category.
@@ -42,7 +40,6 @@ Detailed documentation for developers and operators:
 - **[Deployment Guide](docs/DEPLOYMENT.md)**: Step-by-step instructions for production deployment.
 - **[Onboarding Guide](docs/ONBOARDING.md)**: New developer setup and workflows.
 - **[Testing Guide](TESTING.md)**: End-to-end testing paradigm and runners.
-- **[Audit Reports](docs/audit/)**: System analysis and refactoring history.
 
 ## 🌍 Environment Architecture
 
