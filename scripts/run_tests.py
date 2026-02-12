@@ -41,6 +41,10 @@ def has_tests(path: Path) -> bool:
     return False
 
 
+def has_file(path: Path) -> bool:
+    return path.exists() and path.is_file()
+
+
 def resolve_sim_date(value: str) -> str:
     if value:
         return value
@@ -56,17 +60,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Ada test runner")
     parser.add_argument(
         "--mode",
-        choices=["quick", "full", "unit", "suites", "integration", "e2e"],
+        choices=["quick", "full", "unit", "suites", "smoke", "integration", "simulate", "e2e"],
         default="quick",
     )
     parser.add_argument("--simulation-date", default="", help="YYYY-MM-DD")
-    parser.add_argument("--skip-backtest", action="store_true")
     args = parser.parse_args()
 
     run_unit = args.mode in ("quick", "full", "unit")
     run_suites = args.mode in ("full", "suites")
-    run_integration = args.mode in ("full", "integration")
-    run_e2e = args.mode in ("full", "e2e")
+    run_smoke = args.mode in ("full", "smoke", "integration")
+    run_simulate = args.mode in ("full", "simulate", "e2e")
 
     if run_unit:
         write_section("Unit Tests")
@@ -90,30 +93,37 @@ def main() -> int:
         if has_tests(ROOT / "services" / "alert-service" / "tests"):
             run_step("Alert Service", COMPOSE + ["exec", "-T", "alert-service", "pytest", "/app/tests"])
 
-        if not args.skip_backtest and has_tests(ROOT / "services" / "backtest-service" / "tests"):
-            run_step("Backtest Service", COMPOSE + ["exec", "-T", "backtest-service", "pytest", "/app/tests"])
-        elif args.skip_backtest:
-            print("Skipping backtest tests (skip-backtest enabled)")
-
         if has_tests(ROOT / "services" / "scheduler-service" / "tests"):
             run_step("Scheduler Service", COMPOSE + ["exec", "-T", "scheduler-service", "pytest", "/app/tests"])
 
     if run_suites:
         write_section("Service Test Suites")
-        run_step("Data Service Suite", COMPOSE + ["exec", "-T", "data-service", "python", "scripts/test_suite.py"])
-        run_step("Indicator Service Suite", COMPOSE + ["exec", "-T", "indicator-service", "python", "scripts/test_suite.py"])
-        if not args.skip_backtest:
-            run_step("Backtest Service Suite", COMPOSE + ["exec", "-T", "backtest-service", "python", "scripts/test_suite.py"])
+        suites_run = 0
 
-    if run_integration:
-        write_section("Integration Tests")
+        if has_file(ROOT / "services" / "data-service" / "scripts" / "test_suite.py"):
+            run_step("Data Service Suite", COMPOSE + ["exec", "-T", "data-service", "python", "scripts/test_suite.py"])
+            suites_run += 1
+        else:
+            print("Skipping data-service suite (scripts/test_suite.py not found)")
+
+        if has_file(ROOT / "services" / "indicator-service" / "scripts" / "test_suite.py"):
+            run_step("Indicator Service Suite", COMPOSE + ["exec", "-T", "indicator-service", "python", "scripts/test_suite.py"])
+            suites_run += 1
+        else:
+            print("Skipping indicator-service suite (scripts/test_suite.py not found)")
+
+        if suites_run == 0:
+            print("No standalone service suites configured.")
+
+    if run_smoke:
+        write_section("Pipeline Smoke Tests")
         run_step(
-            "Integration Suite",
-            COMPOSE + ["exec", "-T", "backtest-service", "pytest", "/ada/tests/integration_test_suite.py", "-v"],
+            "Pipeline Smoke Suite",
+            COMPOSE + ["exec", "-T", "scanner-service", "pytest", "/ada/tests/pipeline_smoke_test.py", "-v"],
         )
 
-    if run_e2e:
-        write_section("End-to-End Simulation")
+    if run_simulate:
+        write_section("Simulated Daily Flow Smoke")
         sim_date = resolve_sim_date(args.simulation_date)
         run_step(
             f"Simulated Daily Flow (target_date={sim_date})",
@@ -121,10 +131,10 @@ def main() -> int:
             + [
                 "exec",
                 "-T",
-                "backtest-service",
+                "scanner-service",
                 "/bin/sh",
                 "-c",
-                f"RUN_SIMULATION=1 SIMULATION_DATE={sim_date} python /ada/tests/integration_test_suite.py",
+                f"RUN_SIMULATION=1 SIMULATION_DATE={sim_date} python /ada/tests/pipeline_smoke_test.py",
             ],
         )
 

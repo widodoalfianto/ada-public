@@ -1,10 +1,18 @@
 import asyncio
+import os
 import sys
 from sqlalchemy import text
 from src.database import AsyncSessionLocal
 
 # Dangerous script!
 async def reset_db():
+    allow = os.getenv("ALLOW_DB_RESET", "").strip().lower() in {"1", "true", "yes"}
+    env = os.getenv("ENV", "").strip().lower()
+    if not allow and env not in {"dev", "test", "local"}:
+        print("Refusing to reset DB outside local/dev/test.")
+        print("Set ALLOW_DB_RESET=true to override.")
+        return
+
     print("WARNING: This will delete ALL data from the database (stocks, prices, indicators).")
     print("Waiting 5 seconds... Press Ctrl+C to cancel.")
     await asyncio.sleep(5)
@@ -13,9 +21,10 @@ async def reset_db():
         print("Truncating tables...")
         # Order matters due to foreign keys, or use CASCADE
         tables = [
-            "alert_history", 
             "fetch_failures", 
             "scan_logs", 
+            "alert_history",
+            "alert_configs",
             "indicators", 
             "price_data", 
             "stocks"

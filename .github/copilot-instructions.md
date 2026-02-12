@@ -4,7 +4,7 @@
 
 ## 🏗️ Architecture Overview
 
-### Service Topology (5 Microservices)
+### Service Topology (4 Active Microservices)
 
 | Service | Role | Tech | Key Files |
 |---------|------|------|-----------|
@@ -12,7 +12,6 @@
 | **Indicator Service** | Calculates technical indicators (SMA, RSI, MACD, Volume) on-demand | FastAPI + Pandas/NumPy | `services/indicator-service/src/indicators.py`, `daily_calculate.py` |
 | **Scanner Service** | Orchestrates scans, evaluates complex conditions (crossovers, reversions) | FastAPI + Background Tasks | `services/scanner-service/src/worker.py`, `crossover_worker.py` |
 | **Alert Service** | Formats and sends alerts to Discord via webhooks/bot | FastAPI + Discord.py | `services/alert-service/src/bot.py`, signal registry system |
-| **Backtest Service** | Historical strategy simulation and metrics analysis | FastAPI + NumPy | `services/backtest-service/src/backtest_engine.py` |
 
 ### Data Flow
 
@@ -187,24 +186,17 @@ Preferred (cross-platform) runner:
 ```bash
 python scripts/run_tests.py --mode quick
 python scripts/run_tests.py --mode full
-python scripts/run_tests.py --mode e2e --simulation-date 2026-02-06
+python scripts/run_tests.py --mode simulate --simulation-date 2026-02-06
 ```
 
 Makefile shortcuts:
 ```bash
 make test-unit
-make test-suites
-make test-integration
-make test-e2e SIM_DATE=2026-02-06
+make test-smoke
+make test-simulate SIM_DATE=2026-02-06
 ```
 
-Each service has a **test suite** in `scripts/test_suite.py`:
-
-```bash
-docker compose exec data-service python scripts/test_suite.py
-docker compose exec indicator-service python scripts/test_suite.py
-docker compose exec backtest-service python scripts/test_suite.py
-```
+`make test-suites` is currently a no-op (standalone suite scripts are deprecated).
 
 **Unit tests** in `tests/` use pytest:
 
@@ -265,9 +257,6 @@ docker compose exec scanner-service python scripts/manual_scan.py TSLA
 
 # Top 100 stocks by volume:
 docker compose exec scanner-service python scripts/manual_scan.py --top-100
-
-# Backtest a strategy:
-docker compose exec backtest-service python scripts/test_single.py AAPL strategy_name
 ```
 
 ### Backfilling Historical Data
@@ -298,7 +287,6 @@ docker compose exec data-service python scripts/backfill_history.py --years=5
 | [services/shared/config.py](services/shared/config.py) | Environment validation (TEST_MODE, DB separation) |
 | [services/scanner-service/src/worker.py](services/scanner-service/src/worker.py) | Core scanning logic (condition evaluation) |
 | [services/alert-service/src/main.py](services/alert-service/src/main.py) | Signal receipt and template-based formatting |
-| [services/backtest-service/src/backtest_engine.py](services/backtest-service/src/backtest_engine.py) | Strategy simulation engine |
 | [docker-compose.yml](docker-compose.yml) | Production setup (stock_db, service URLs) |
 | [docker-compose.dev-full.yml](docker-compose.dev-full.yml) | Development setup (stock_dev_db, DEBUG logging) |
 

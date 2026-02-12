@@ -35,3 +35,4 @@ venv.bak/
 
 # Backtest strategies (user-specific)
 services/backtest-service/strategies/
+services/scanner-service/strategies/

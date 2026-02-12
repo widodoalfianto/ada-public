@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, BigInteger, Date, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, BigInteger, Date, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, ARRAY
 from sqlalchemy.orm import relationship
 from src.database import Base
@@ -26,6 +26,9 @@ class AlertConfig(Base):
 
 class AlertHistory(Base):
     __tablename__ = "alert_history"
+    __table_args__ = (
+        UniqueConstraint("stock_id", "date", "crossover_type", name="uq_alert_history_stock_date_type"),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
     alert_config_id = Column(Integer, ForeignKey("alert_configs.id"), index=True)
@@ -33,7 +36,7 @@ class AlertHistory(Base):
     triggered_at = Column(DateTime, nullable=False, index=True)
     date = Column(Date, nullable=False, index=True)
     condition_met = Column(String(255))
-    crossover_type = Column(String(20), index=True)  # 'golden_cross' or 'death_cross'
+    crossover_type = Column(String(50), index=True, nullable=False)
     direction = Column(String(50))  # bullish or bearish
     price = Column(Float)
     indicator_values = Column(JSONB)

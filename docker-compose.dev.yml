@@ -18,6 +18,3 @@ services:
     environment:
       LOG_LEVEL: "DEBUG"
 
-  backtest-service:
-    environment:
-      LOG_LEVEL: "DEBUG"

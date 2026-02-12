@@ -31,7 +31,7 @@ make dev
 ```
 This will:
 - Build all development images.
-- Start the full stack (Data, Indicator, Scanner, Alert, Backtest services).
+- Start the full stack (Data, Indicator, Scanner, Alert, Scheduler services).
 - Initialize the `stock_dev_db` database.
 - Start Redis.
 
@@ -56,20 +56,19 @@ Use the cross-platform Python test runner to keep developer experience consisten
 ```bash
 python scripts/run_tests.py --mode quick
 python scripts/run_tests.py --mode full
-python scripts/run_tests.py --mode e2e --simulation-date 2026-02-06
+python scripts/run_tests.py --mode simulate --simulation-date 2026-02-06
 ```
 
 Makefile equivalents:
 ```bash
 make test-unit
-make test-suites
-make test-integration
-make test-e2e SIM_DATE=2026-02-06
+make test-smoke
+make test-simulate SIM_DATE=2026-02-06
 ```
 
 **Notes**
-- `full` includes an end-to-end simulation that may send a Discord summary to the test channel.
-- If you want to skip backtest tests: `python scripts/run_tests.py --mode full --skip-backtest`
+- `full` includes a simulated daily flow that may send a Discord summary to the test channel.
+- `make test-suites` is currently a no-op (standalone suite scripts are deprecated).
 
 ## 5. Development Workflow
 1.  Create a feature branch.
@@ -78,5 +77,5 @@ make test-e2e SIM_DATE=2026-02-06
 4.  Run tests: `docker compose -f docker-compose.dev-full.yml exec <service> pytest`
 
 ## 6. Troubleshooting
-- **Ports already in use**: Check if another instance is running (`docker ps`) or if system services are using ports 9001-9005.
+- **Ports already in use**: Check if another instance is running (`docker ps`) or if system services are using ports 9001-9004.
 - **Database connection failed**: Ensure `make dev` completed successfully and the specific `healthcheck` passed.

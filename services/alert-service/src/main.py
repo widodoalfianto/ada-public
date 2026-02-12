@@ -30,6 +30,44 @@ class RawSignal(BaseModel):
     timestamp: int
     data: Dict[str, Any]
 
+
+def _is_entry_signal(signal_code: str) -> bool:
+    code = signal_code.upper()
+    return code.endswith("_ENTRY")
+
+
+def _is_exit_signal(signal_code: str) -> bool:
+    code = signal_code.upper()
+    return code.endswith("_EXIT")
+
+
+def _is_esm_signal(signal_code: str) -> bool:
+    code = signal_code.upper()
+    return code.startswith("ESM_")
+
+
+def _is_pf_signal(signal_code: str) -> bool:
+    code = signal_code.upper()
+    return code.startswith("PF_")
+
+
+def _esm_copy_for_signal(signal_code: str, _data: Dict[str, Any]) -> tuple[Optional[str], Optional[str]]:
+    """
+    Canonical ESM copy aligned to signal registry messaging.
+    """
+    code = signal_code.upper()
+
+    if code == "ESM_ENTRY":
+        return (
+            "ESM Entry: Short-term momentum is bullish.",
+            "Potential Entry (Long)",
+        )
+
+    if code == "ESM_EXIT":
+        return ("ESM Exit: Short-term momentum is bearish.", "Potential Exit.")
+
+    return (None, None)
+
 # --- Startup ---
 
 @app.on_event("startup")
@@ -63,6 +101,8 @@ async def receive_signal(signal: RawSignal):
             
         if not definition.enabled:
             return {"status": "ignored", "reason": "disabled"}
+        if not (_is_esm_signal(signal.signal_code) or _is_pf_signal(signal.signal_code)):
+            return {"status": "ignored", "reason": "unsupported_signal_family"}
             
         # Format Data
         try:
@@ -85,6 +125,15 @@ async def receive_signal(signal: RawSignal):
             logger.error(f"Formatting error: {e}")
             message_body = f"Error formatting message. Raw Data: {signal.data}"
 
+        # Enforce canonical copy for ESM entry/exit signals.
+        action_text = definition.action_text
+        if _is_esm_signal(signal.signal_code):
+            esm_message, esm_action = _esm_copy_for_signal(signal.signal_code, signal.data)
+            if esm_message:
+                message_body = esm_message
+            if esm_action:
+                action_text = esm_action
+
         # Construct Embed Details
         emoji = definition.emoji if definition.emoji else ""
         title = f"{emoji} {definition.display_name}: {signal.symbol}"
@@ -92,37 +141,27 @@ async def receive_signal(signal: RawSignal):
             title = f"[TEST] {title}"
             
         # Color Logic
-        color = 0x00ff00 # Default Green
+        color = 0x00ff00  # Default Green
         sev = definition.severity.lower()
-        if sev == "high" or sev == "critical":
-            # If 'bearish' in display name or code, make it Red? 
-            # Ideally the registry should have a 'color' or 'sentiment' column too.
-            # For now, simplistic heuristic or default.
-            if "BEARISH" in signal.signal_code or "DEATH" in signal.signal_code or "OVERBOUGHT" in signal.signal_code:
-                 color = 0xff0000 
-            else:
-                 color = 0x00ff00
+        if _is_exit_signal(signal.signal_code):
+            color = 0xff0000
+        elif _is_entry_signal(signal.signal_code):
+            color = 0x00ff00
         elif sev == "warning":
             color = 0xffff00
             
         # Body Construction
-        body = f"🕒 <t:{signal.timestamp}:f>\n\n"
-        body += f"**Signal**: {message_body}\n"
+        body = f"\U0001F552 <t:{signal.timestamp}:f>\n\n"
+        body += f"Signal: {message_body}\n"
         
-        if definition.action_text:
-            body += f"**Action**: {definition.action_text}\n"
-            
-        if sev == "critical":
-             body += "\n🚨 **CRITICAL ALERT** 🚨"
-        elif sev == "high":
-             body += "\n⚠️ **HIGH PRIORITY**"
-
+        if action_text:
+            body += f"Action: {action_text}\n"
         # Determine Category for Routing based on signal code
         category = "general"
-        if "MACD" in signal.signal_code: category = "macd"
-        elif "RSI" in signal.signal_code: category = "rsi"
-        elif "VOL" in signal.signal_code: category = "volume"
-        elif "CROSS" in signal.signal_code: category = "ma"
+        if _is_pf_signal(signal.signal_code): 
+            category = "pf"
+        elif _is_esm_signal(signal.signal_code):
+            category = "esm"
         
         target_channel = _get_channel_for_category(category, sev)
         
@@ -131,16 +170,14 @@ async def receive_signal(signal: RawSignal):
         show_volume_panel = True # Default: Show volume
         
         # User Logic: Filter noise based on signal type
-        if "GOLDEN_CROSS" in signal.signal_code or "DEATH_CROSS" in signal.signal_code:
+        if _is_esm_signal(signal.signal_code):
             # User specifically requested ONLY EMA9 and SMA20, and NO Volume, NO SMA50/200
             indicators_to_show = ['ema_9', 'sma_20']
             show_volume_panel = False
-        elif "RSI" in signal.signal_code:
-            indicators_to_show = ['rsi_14']
-        elif "MACD" in signal.signal_code:
-            indicators_to_show = ['macd', 'macd_signal']
-        elif "SMA" in signal.signal_code or "EMA" in signal.signal_code:
-             indicators_to_show = ['sma_20', 'sma_50', 'sma_200', 'ema_9']
+        elif _is_pf_signal(signal.signal_code):
+            # PF alerts should include a chart with key trend overlays.
+            indicators_to_show = ['ema_9', 'sma_20', 'sma_50']
+            show_volume_panel = True
         
         # Generate Chart
         image_buffer = None
@@ -170,6 +207,52 @@ async def trigger_morning_summary(payload: DatePayload = None):
     asyncio.create_task(bot.send_morning_summary(target_date=target))
     return {"status": "triggered", "target_date": target}
 
+
+class SystemAlertPayload(BaseModel):
+    title: str
+    message: str
+    severity: str = "error"
+    source: Optional[str] = None
+
+
+def _severity_color(level: str) -> int:
+    sev = level.lower()
+    if sev == "critical":
+        return 0x8B0000
+    if sev == "error":
+        return 0xFF0000
+    if sev == "warning":
+        return 0xFFA500
+    return 0x3498DB
+
+
+@app.post("/system-alert")
+async def send_system_alert(payload: SystemAlertPayload):
+    """
+    Send operational alerts directly to developer-only system channel.
+    """
+    if not settings.DISCORD_CHANNEL_SYSTEM:
+        logger.error("System alert rejected: DISCORD_CHANNEL_SYSTEM is not configured")
+        return {"status": "failed", "reason": "system_channel_not_configured"}
+
+    ts = int(datetime.now().timestamp())
+    source = f"\nSource: {payload.source}" if payload.source else ""
+    body = f"\U0001F552 <t:{ts}:f>\n\n{payload.message}{source}"
+    title = f"\u26A0\uFE0F {payload.title}"
+    if settings.TEST_MODE:
+        title = f"[TEST] {title}"
+
+    asyncio.create_task(
+        bot.send_alert(
+            title=title,
+            message=body,
+            color=_severity_color(payload.severity),
+            channel_id=settings.DISCORD_CHANNEL_SYSTEM,
+            image_buffer=None,
+        )
+    )
+    return {"status": "queued", "channel": "system"}
+
 def _get_channel_for_category(category: str, level: str):
     target_channel = settings.DISCORD_CHANNEL_FALLBACK
     cat = category.lower()
@@ -178,13 +261,10 @@ def _get_channel_for_category(category: str, level: str):
     if (level == "error" or level == "critical") and settings.DISCORD_CHANNEL_SYSTEM:
         target_channel = settings.DISCORD_CHANNEL_SYSTEM
     # 2. Category Routing
-    elif cat == "ma" and settings.DISCORD_CHANNEL_MA:
-        target_channel = settings.DISCORD_CHANNEL_MA
-    elif cat == "rsi" and settings.DISCORD_CHANNEL_RSI:
-        target_channel = settings.DISCORD_CHANNEL_RSI
-    elif cat == "macd" and settings.DISCORD_CHANNEL_MACD:
-        target_channel = settings.DISCORD_CHANNEL_MACD
-    elif (cat == "volume" or cat == "vol") and settings.DISCORD_CHANNEL_VOL:
-        target_channel = settings.DISCORD_CHANNEL_VOL
-        
+    elif cat == "esm" and settings.DISCORD_CHANNEL_ESM:
+        target_channel = settings.DISCORD_CHANNEL_ESM
+    elif cat == "pf" and settings.DISCORD_CHANNEL_PF:
+        target_channel = settings.DISCORD_CHANNEL_PF
+
     return target_channel
+

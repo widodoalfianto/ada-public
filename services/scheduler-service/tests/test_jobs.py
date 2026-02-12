@@ -1,10 +1,10 @@
 """
 Tests for scheduler-service job functions.
 """
+from unittest.mock import patch, MagicMock, AsyncMock
+
 import pytest
-from unittest.mock import patch, MagicMock
-from datetime import datetime
-import pytz
+from types import ModuleType
 
 
 class TestIsTradingDay:
@@ -22,7 +22,7 @@ class TestIsTradingDay:
         mock_calendar.schedule.return_value = mock_schedule
         mock_mcal.get_calendar.return_value = mock_calendar
         
-        assert is_trading_day() == True
+        assert is_trading_day() is True
     
     @patch('src.jobs.mcal')
     def test_holiday_returns_false(self, mock_mcal):
@@ -36,51 +36,63 @@ class TestIsTradingDay:
         mock_calendar.schedule.return_value = mock_schedule
         mock_mcal.get_calendar.return_value = mock_calendar
         
-        assert is_trading_day() == False
+        assert is_trading_day() is False
 
 
-class TestRunMarketScan:
-    """Tests for run_market_scan function."""
-    
-    @patch('src.jobs.requests')
-    @patch('src.jobs.is_trading_day')
-    def test_skips_on_non_trading_day(self, mock_is_trading_day, mock_requests):
-        """Test that scan is skipped on non-trading days."""
-        from src.jobs import run_market_scan
-        
-        mock_is_trading_day.return_value = False
-        
-        run_market_scan("end_of_day")
-        
-        # Should not make any HTTP calls
-        mock_requests.post.assert_not_called()
-    
-    @patch('src.jobs.requests')
-    @patch('src.jobs.is_trading_day')
-    def test_triggers_scan_on_trading_day(self, mock_is_trading_day, mock_requests):
-        """Test that scan is triggered on trading days."""
-        from src.jobs import run_market_scan
-        
-        mock_is_trading_day.return_value = True
+class TestRetryHelpers:
+    @pytest.mark.asyncio
+    async def test_post_json_with_retry_succeeds(self):
+        from src.jobs import _post_json_with_retry
+
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_requests.post.return_value = mock_response
-        
-        run_market_scan("end_of_day")
-        
-        # Should call the scanner service
-        mock_requests.post.assert_called_once()
-        call_url = mock_requests.post.call_args[0][0]
-        assert "/run-scan" in call_url
-    
-    @patch('src.jobs.requests')
-    @patch('src.jobs.is_trading_day')
-    def test_handles_connection_error(self, mock_is_trading_day, mock_requests):
-        """Test that connection errors are handled gracefully."""
-        from src.jobs import run_market_scan
-        
-        mock_is_trading_day.return_value = True
-        mock_requests.post.side_effect = Exception("Connection refused")
-        
-        # Should not raise exception
-        run_market_scan("end_of_day")
+        mock_response.content = b'{"status":"completed"}'
+        mock_response.json.return_value = {"status": "completed"}
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__.return_value = mock_client
+        mock_ctx.__aexit__.return_value = None
+        mock_httpx = ModuleType("httpx")
+        mock_httpx.AsyncClient = MagicMock(return_value=mock_ctx)
+
+        with patch.dict("sys.modules", {"httpx": mock_httpx}):
+            result = await _post_json_with_retry(
+                "http://example/api",
+                job_name="test_job",
+                timeout_seconds=1.0,
+            )
+
+        assert result == {"status": "completed"}
+
+    @pytest.mark.asyncio
+    async def test_post_json_with_retry_sends_system_alert_after_exhaustion(self):
+        from src import jobs
+
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = RuntimeError("upstream down")
+
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__.return_value = mock_client
+        mock_ctx.__aexit__.return_value = None
+        mock_httpx = ModuleType("httpx")
+        mock_httpx.AsyncClient = MagicMock(return_value=mock_ctx)
+
+        with patch.dict("sys.modules", {"httpx": mock_httpx}), patch(
+            "src.jobs.RETRY_DELAYS_SECONDS",
+            [1, 2],
+        ), patch("asyncio.sleep", new=AsyncMock()) as mock_sleep, patch(
+            "src.jobs._send_system_alert",
+            new=AsyncMock(),
+        ) as mock_system_alert:
+            result = await jobs._post_json_with_retry(
+                "http://example/api",
+                job_name="test_job",
+                timeout_seconds=1.0,
+            )
+
+        assert result is None
+        assert mock_sleep.await_count == 2
+        mock_system_alert.assert_awaited_once()

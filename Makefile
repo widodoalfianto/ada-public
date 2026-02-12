@@ -3,7 +3,7 @@
 DEV_COMPOSE ?= docker compose -p ada-dev --env-file .env.dev -f docker-compose.dev-full.yml
 PROD_COMPOSE ?= docker compose --env-file .env -f docker-compose.yml
 
-.PHONY: dev prod down logs db-shell clean help test-unit test-suites test-integration test-e2e test-full
+.PHONY: dev prod down logs db-shell clean help test test-unit test-suites test-smoke test-integration test-simulate test-e2e test-full
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -16,10 +16,11 @@ help: ## Show this help message
 	@echo '  db-shell   Access the database shell (Dev by default, env=prod for Prod)'
 	@echo '  clean      Remove all volumes and data (Warning: Destructive!)'
 	@echo '  test       Run unit tests (alias: test-unit)'
-	@echo '  test-suites Run service test suites (scripts/test_suite.py)'
-	@echo '  test-integration Run integration suite (pytest)'
-	@echo '  test-e2e   Run end-to-end simulation (requires SIM_DATE)'
-	@echo '  test-full  Run unit + suites + integration + e2e'
+	@echo '  test-suites Deprecated (no standalone suite scripts in active services)'
+	@echo '  test-smoke   Run pipeline smoke suite (pytest)'
+	@echo '  test-simulate Run simulated daily flow smoke (requires SIM_DATE)'
+	@echo '  test-e2e   Alias for test-simulate'
+	@echo '  test-full  Run unit + smoke + simulate'
 	@echo ''
 
 dev: ## Start Development Environment
@@ -69,31 +70,26 @@ test-unit: ## Run unit tests across services
 	@echo "Testing Alert Service..."
 	@$(DEV_COMPOSE) exec -T alert-service pytest /app/tests
 	@echo "-----------------------------------"
-	@echo "Testing Backtest Service..."
-	@$(DEV_COMPOSE) exec -T backtest-service pytest /app/tests
-	@echo "-----------------------------------"
 	@echo "Testing Scheduler Service..."
 	@$(DEV_COMPOSE) exec -T scheduler-service pytest /app/tests
 
 test-suites: ## Run service test suites
-	@echo "Running service test suites..."
-	@echo "-----------------------------------"
-	@$(DEV_COMPOSE) exec -T data-service python scripts/test_suite.py
-	@echo "-----------------------------------"
-	@$(DEV_COMPOSE) exec -T indicator-service python scripts/test_suite.py
-	@echo "-----------------------------------"
-	@$(DEV_COMPOSE) exec -T backtest-service python scripts/test_suite.py
+	@echo "No standalone service suite scripts configured in active services."
 
-test-integration: ## Run integration suite
-	@echo "Running integration tests..."
-	@$(DEV_COMPOSE) exec -T backtest-service pytest /ada/tests/integration_test_suite.py -v
+test-smoke: ## Run pipeline smoke suite
+	@echo "Running pipeline smoke tests..."
+	@$(DEV_COMPOSE) exec -T scanner-service pytest /ada/tests/pipeline_smoke_test.py -v
 
-test-e2e: ## Run end-to-end simulation (requires SIM_DATE=YYYY-MM-DD)
+test-integration: test-smoke ## Alias for test-smoke
+
+test-simulate: ## Run simulated daily flow smoke (requires SIM_DATE=YYYY-MM-DD)
 ifndef SIM_DATE
-	@echo "SIM_DATE is required. Example: make test-e2e SIM_DATE=2026-02-06"
+	@echo "SIM_DATE is required. Example: make test-simulate SIM_DATE=2026-02-06"
 	@exit 1
 endif
-	@echo "Running end-to-end simulation for $(SIM_DATE)..."
-	@$(DEV_COMPOSE) exec -T backtest-service /bin/sh -c "RUN_SIMULATION=1 SIMULATION_DATE=$(SIM_DATE) python /ada/tests/integration_test_suite.py"
+	@echo "Running simulated daily flow for $(SIM_DATE)..."
+	@$(DEV_COMPOSE) exec -T scanner-service /bin/sh -c "RUN_SIMULATION=1 SIMULATION_DATE=$(SIM_DATE) python /ada/tests/pipeline_smoke_test.py"
 
-test-full: test-unit test-suites test-integration test-e2e ## Full test run
+test-e2e: test-simulate ## Alias for test-simulate
+
+test-full: test-unit test-smoke test-simulate ## Full test run

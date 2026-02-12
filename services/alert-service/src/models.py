@@ -5,7 +5,7 @@ from datetime import datetime
 class SignalRegistry(Base):
     """
     Registry for Alert definitions.
-    Maps a raw 'signal_code' (e.g. SIG_GOLDEN_CROSS) to presentation details.
+    Maps a raw 'signal_code' (e.g. ESM_ENTRY) to presentation details.
     """
     __tablename__ = "signal_registry"
     

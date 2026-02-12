@@ -35,24 +35,8 @@ async def root():
 
 from src.database import AsyncSessionLocal
 from shared.models import Stock
-from src.consts import INITIAL_STOCKS
 from sqlalchemy import select
-
-@app.post("/admin/populate")
-async def populate_watchlist():
-    async with AsyncSessionLocal() as session:
-        # Check existing
-        result = await session.execute(select(Stock.symbol))
-        existing = set(result.scalars().all())
-        
-        added_count = 0
-        for symbol in INITIAL_STOCKS:
-            if symbol not in existing:
-                session.add(Stock(symbol=symbol, name=symbol, is_active=True))
-                added_count += 1
-        
-        await session.commit()
-    return {"message": f"Added {added_count} stocks to watchlist"}
+from sqlalchemy.exc import IntegrityError
 
 from src.daily_update import fetch_daily_prices
 
@@ -127,16 +111,6 @@ async def record_alert(alert: AlertCreate):
             
             if not stock_id:
                 return {"status": "error", "message": "Stock not found"}
-            
-            # Check for existing alert for this stock/date/type to avoid duplicates
-            existing_stmt = select(AlertHistory).where(
-                AlertHistory.stock_id == stock_id,
-                AlertHistory.date == alert.date,
-                AlertHistory.crossover_type == alert.crossover_type
-            )
-            existing = await session.execute(existing_stmt)
-            if existing.scalars().first():
-                return {"status": "skipped", "message": "Duplicate alert"}
 
             history = AlertHistory(
                 stock_id=stock_id,
@@ -144,14 +118,20 @@ async def record_alert(alert: AlertCreate):
                 triggered_at=alert.triggered_at,
                 date=alert.date,
                 condition_met=alert.condition_met,
-                crossover_type=alert.crossover_type,
+                crossover_type=alert.crossover_type or "unknown",
                 direction=alert.direction,
                 price=alert.price,
                 indicator_values=alert.indicator_values,
-                notified=True 
+                notified=False,
             )
             session.add(history)
-            await session.commit()
+
+            try:
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                return {"status": "skipped", "message": "Duplicate alert"}
+
             await session.refresh(history)
             return {"status": "success", "id": history.id}
     except Exception as e:

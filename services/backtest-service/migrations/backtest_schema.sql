@@ -1,4 +1,0 @@
--- Backtest Schema (Redacted)
---
--- The full backtest schema is omitted from the public repository.
--- If you need access, please contact the maintainers.

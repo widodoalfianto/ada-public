@@ -3,12 +3,15 @@
 Scans market data to detect trading signals.
 
 ## Responsibilities
-- Evaluate stocks against signal conditions
-- Detect crossovers, RSI extremes, volume spikes
-- Send signals to alert-service
+- Load strategy definitions from JSON files
+- Evaluate top-liquidity stocks against enabled strategy rules
+- Emit strategy-scoped Entry/Exit signals (currently `ESM`, `PF`)
 
 ## API Endpoints
-- `POST /run-scan` - Trigger market scan
+- `POST /run-scan` - Trigger all enabled strategy scans (`target_date`, `send_notifications` optional)
+- `POST /run-esm-scan` - Trigger ESM scan
+- `POST /run-pf-scan` - Trigger PF scan
+- `POST /run-strategy-scan/{strategy_code}` - Trigger one strategy scan (`target_date`, `send_notifications` optional)
 
 ## Configuration
 | Variable | Description |
@@ -17,4 +20,4 @@ Scans market data to detect trading signals.
 | `ALERT_SERVICE_URL` | Alert service endpoint |
 
 ## Scripts
-- `scan.py` - Manual scan with optional date replay
+- `scan.py` - Manual trigger for all strategies or one strategy (`ESM`/`PF`) with optional `--date` and `--no-notify`

@@ -9,7 +9,7 @@ import yfinance as yf
 import pandas as pd
 
 from src.config import settings
-from src.models import Stock, PriceData
+from shared.models import Stock, PriceData
 import logging
 
 # Configure logging

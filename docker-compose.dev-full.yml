@@ -54,7 +54,6 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://user:password@db:5432/stock_dev_db
       REDIS_URL: redis://redis:6379/0
-      FINNHUB_API_KEY: ${FINNHUB_API_KEY}
       LOG_LEVEL: "DEBUG"
       TEST_MODE: ${TEST_MODE}
       PYTHONPATH: "/app:/libs"
@@ -102,6 +101,7 @@ services:
     volumes:
       - ./services/scanner-service:/app
       - ./services/shared:/libs/shared
+      - ./tests:/ada/tests:ro
     depends_on:
       db:
         condition: service_healthy
@@ -131,13 +131,10 @@ services:
       - ./services/alert-service:/app
       - ./services/shared:/libs/shared
     depends_on:
-      redis:
-        condition: service_started
       db:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+asyncpg://user:password@db:5432/stock_dev_db
-      REDIS_URL: redis://redis:6379/0
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
 
       # Mode
@@ -170,35 +167,6 @@ services:
     depends_on:
       scanner-service:
         condition: service_started
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    env_file:
-      - .env.dev
-
-  backtest-service:
-    image: ada/backtest-service:dev
-    build:
-      context: .
-      dockerfile: services/backtest-service/Dockerfile
-    ports:
-      - "${BACKTEST_PORT}:8000"
-    volumes:
-      - ./services/backtest-service:/app
-      - ./:/ada:ro
-      - ./services/shared:/libs/shared
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql://user:password@db:5432/stock_dev_db
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: stock_dev_db
-      LOG_LEVEL: "DEBUG"
-      TEST_MODE: ${TEST_MODE}
     logging:
       driver: "json-file"
       options:

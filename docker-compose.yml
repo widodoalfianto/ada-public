@@ -48,7 +48,6 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://user:password@db:5432/stock_db
       REDIS_URL: redis://redis:6379/0
-      FINNHUB_API_KEY: ${FINNHUB_API_KEY}
     logging:
       driver: "json-file"
       options:
@@ -105,13 +104,10 @@ services:
       - "8004:8000"
 
     depends_on:
-      redis:
-        condition: service_started
       db:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+asyncpg://user:password@db:5432/stock_db
-      REDIS_URL: redis://redis:6379/0
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
 
       # Mode
@@ -119,10 +115,8 @@ services:
 
       # Prod Channels (Fallback/Base)
       DISCORD_CHANNEL_FALLBACK: ${DISCORD_CHANNEL_FALLBACK}
-      DISCORD_CHANNEL_MA: ${DISCORD_CHANNEL_MA}
-      DISCORD_CHANNEL_RSI: ${DISCORD_CHANNEL_RSI}
-      DISCORD_CHANNEL_MACD: ${DISCORD_CHANNEL_MACD}
-      DISCORD_CHANNEL_VOL: ${DISCORD_CHANNEL_VOL}
+      DISCORD_CHANNEL_ESM: ${DISCORD_CHANNEL_ESM}
+      DISCORD_CHANNEL_PF: ${DISCORD_CHANNEL_PF}
 
       # Test Channels
 
@@ -148,28 +142,6 @@ services:
     depends_on:
       scanner-service:
         condition: service_started
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  backtest-service:
-    image: ada/backtest-service:prod
-    build:
-      context: .
-      dockerfile: services/backtest-service/Dockerfile
-    ports:
-      - "8005:8000"
-
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql://user:password@db:5432/stock_db
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: stock_db
     logging:
       driver: "json-file"
       options:

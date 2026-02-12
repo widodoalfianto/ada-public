@@ -26,7 +26,6 @@ class BaseConfig(BaseSettings):
     INDICATOR_SERVICE_URL: str = "http://indicator-service:8000"
     SCANNER_SERVICE_URL: str = "http://scanner-service:8000"
     ALERT_SERVICE_URL: str = "http://alert-service:8000"
-    BACKTEST_SERVICE_URL: str = "http://backtest-service:8000"
 
     def model_post_init(self, __context):
         """

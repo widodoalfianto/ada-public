@@ -1,126 +1,141 @@
 """
-Tests for alert-service bot components.
+Tests for alert-service bot helpers and wiring.
 """
-import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
+from types import ModuleType, SimpleNamespace
+from unittest.mock import MagicMock, patch
 import sys
 
-# Define robust mocks that handle class-level kwargs
-class MockModal:
+
+class MockSelect:
     def __init_subclass__(cls, **kwargs):
         pass
+
     def __init__(self, *args, **kwargs):
-        pass
+        self.values = []
+
 
 class MockView:
     def __init_subclass__(cls, **kwargs):
         pass
+
+    def __init__(self, *args, **kwargs):
+        self.items = []
+
+    def add_item(self, item):
+        self.items.append(item)
+
+
+class MockClient:
+    def __init_subclass__(cls, **kwargs):
+        pass
+
     def __init__(self, *args, **kwargs):
         pass
 
-# Mock discord module
+    def get_channel(self, *_args, **_kwargs):
+        return None
+
+
+class MockCommandTree:
+    def __init__(self, *_args, **_kwargs):
+        pass
+
+    async def sync(self):
+        return None
+
+    def command(self, *args, **kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
+
+
+class MockChoice:
+    def __init__(self, name, value):
+        self.name = name
+        self.value = value
+
+    def __class_getitem__(cls, _item):
+        return cls
+
+
+def _identity_decorator(*_args, **_kwargs):
+    def decorator(func):
+        return func
+
+    return decorator
+
+
 mock_discord = MagicMock()
-mock_discord.ui.Modal = MockModal
-mock_discord.ui.View = MockView
-mock_discord.ui.TextInput = MagicMock
-mock_discord.ui.Select = MagicMock
-mock_discord.ui.Button = MagicMock
-mock_discord.ButtonStyle = MagicMock()
+mock_discord.Client = MockClient
+mock_discord.Intents = SimpleNamespace(default=lambda: object())
+mock_discord.Interaction = object
+mock_discord.File = MagicMock
 mock_discord.SelectOption = MagicMock
 mock_discord.Embed = MagicMock
+mock_discord.ButtonStyle = MagicMock()
+mock_discord.ui = SimpleNamespace(Select=MockSelect, View=MockView)
+mock_discord.app_commands = SimpleNamespace(
+    Choice=MockChoice,
+    choices=_identity_decorator,
+    describe=_identity_decorator,
+    CommandTree=MockCommandTree,
+)
 
-with patch.dict(sys.modules, {'discord': mock_discord, 'discord.ui': mock_discord.ui}):
+mock_config = ModuleType("src.config")
+mock_config.settings = SimpleNamespace(
+    DATA_SERVICE_URL="http://data-service:8000",
+    DISCORD_CHANNEL_FALLBACK=123,
+    DISCORD_CHANNEL_ESM=456,
+)
+
+mock_chart = ModuleType("src.chart_generator")
+mock_chart.ChartGenerator = SimpleNamespace(generate_chart=MagicMock())
+
+mock_db = ModuleType("src.database")
+mock_db.AsyncSessionLocal = MagicMock()
+
+mock_httpx = ModuleType("httpx")
+mock_httpx.AsyncClient = MagicMock()
+
+with patch.dict(
+    sys.modules,
+    {
+        "discord": mock_discord,
+        "discord.ui": mock_discord.ui,
+        "discord.app_commands": mock_discord.app_commands,
+        "src.config": mock_config,
+        "src.chart_generator": mock_chart,
+        "src.database": mock_db,
+        "httpx": mock_httpx,
+    },
+):
     from src import bot
 
-class TestStrategies:
-    """Tests for strategy configuration."""
-    
-    def test_strategies_defined(self):
-        """Test that default strategies are properly defined."""
-        assert "ma_crossover" in bot.STRATEGIES
-        assert "rsi_bounce" in bot.STRATEGIES
-        assert "macd_cross" in bot.STRATEGIES
-        
-        # Check structure
-        ma_strategy = bot.STRATEGIES["ma_crossover"]
-        assert "name" in ma_strategy
-        assert "params" in ma_strategy
-    
-    def test_periods_defined(self):
-        """Test that period mappings are correct."""
-        assert bot.PERIODS["1M"] == 30
-        assert bot.PERIODS["3M"] == 90
-        assert bot.PERIODS["6M"] == 180
-        assert bot.PERIODS["1Y"] == 365
-        assert bot.PERIODS["2Y"] == 730
+
+def test_bot_instance_created():
+    assert bot.bot is not None
+    assert isinstance(bot.bot, bot.NotificationBot)
 
 
-class TestBacktestModal:
-    """Tests for BacktestModal class."""
-    
-    def test_modal_initialization(self):
-        """Test modal initializes with correct defaults."""
-        modal = bot.BacktestModal(strategy="ma_crossover", period="1Y")
-        
-        assert modal.strategy == "ma_crossover"
-        assert modal.period == "1Y"
+def test_alert_entry_and_exit_helpers():
+    entry = {"crossover_type": "esm_entry", "condition_met": "ESM Entry", "direction": "bullish"}
+    exit_signal = {"crossover_type": "pf_exit", "condition_met": "PF Exit", "direction": "bearish"}
+
+    assert bot._is_entry_alert(entry) is True
+    assert bot._is_exit_alert(entry) is False
+    assert bot._is_exit_alert(exit_signal) is True
+    assert bot._is_entry_alert(exit_signal) is False
 
 
-class TestStrategyBuilder:
-    """Tests for StrategyBuilderView."""
-    
-    def test_builder_initialization(self):
-        """Test strategy builder initializes empty."""
-        builder = bot.StrategyBuilderView()
-        
-        assert builder.entry_conditions == []
-        assert builder.exit_conditions == []
-        assert builder.adding_entry == True
-    
-    def test_describe_rsi_condition(self):
-        """Test RSI condition description."""
-        builder = bot.StrategyBuilderView()
-        
-        condition = {
-            "indicator": "rsi",
-            "comparison": "<",
-            "params": {"period": 14, "threshold": 30}
-        }
-        
-        description = builder.describe_condition(condition)
-        
-        assert "RSI" in description
-        assert "14" in description
-        assert "30" in description
-    
-    def test_describe_ma_cross_condition(self):
-        """Test MA cross condition description."""
-        builder = bot.StrategyBuilderView()
-        
-        condition = {
-            "indicator": "ma_cross",
-            "comparison": "cross_up",
-            "params": {"fast_period": 9, "slow_period": 20}
-        }
-        
-        description = builder.describe_condition(condition)
-        
-        assert "EMA" in description
-        assert "SMA" in description
-        assert "9" in description
-        assert "20" in description
-    
-    def test_build_embed_with_empty_conditions(self):
-        """Test embed building with no conditions."""
-        builder = bot.StrategyBuilderView()
-        embed = builder.build_embed()
-        
-        assert embed is not None
+def test_alert_icon_helper():
+    entry = {"direction": "bullish"}
+    exit_signal = {"direction": "bearish"}
+
+    assert bot._alert_icon(entry) == "\U0001F7E2"
+    assert bot._alert_icon(exit_signal) == "\U0001F534"
 
 
-class TestConditionOptions:
-    """Tests for condition options."""
-    
-    def test_condition_options_defined(self):
-        """Test that condition options are properly defined."""
-        assert len(bot.CONDITION_OPTIONS) >= 5
+def test_summary_chart_view_adds_selector_when_symbols_present():
+    view = bot.SummaryChartView(["AAPL", "MSFT"])
+    assert len(view.items) == 1

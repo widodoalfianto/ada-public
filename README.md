@@ -71,10 +71,8 @@ The system runs in two strictly isolated environments. See [ENVIRONMENTS.md](doc
     DISCORD_BOT_TOKEN=your_discord_bot_token
     
     # Discord Channel Configuration
-    DISCORD_CHANNEL_MA=123456789...     # Trend Alerts
-    DISCORD_CHANNEL_RSI=123456789...    # Reversion Alerts
-    DISCORD_CHANNEL_MACD=123456789...   # Momentum Alerts
-    DISCORD_CHANNEL_VOL=123456789...    # Volume Alerts
+    DISCORD_CHANNEL_ESM=123456789...    # ESM Signals
+    DISCORD_CHANNEL_PF=123456789...     # PF Signals
     DISCORD_CHANNEL_FALLBACK=123456789... # Catch-all
     ```
 
@@ -92,9 +90,9 @@ The system will automatically:
 ## 🎮 Usage
 
 ### Manual Scan
-To manually scan a specific stock (e.g., Tesla) to verify indicators and alerts:
+To manually run scanner strategies (all enabled, or a specific strategy/date):
 ```bash
-docker compose exec scanner-service python scripts/manual_scan.py TSLA
+docker compose exec scanner-service python scripts/scan.py --strategy ESM --date 2026-02-10
 ```
 
 ### Resetting Data
